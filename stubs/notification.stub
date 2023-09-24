@@ -1,0 +1,154 @@
+<?php
+
+namespace {{ namespace }};
+
+use App\Channels\DatabaseChannel;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Notifications\Notification;
+use NotificationChannels\Fcm\Exceptions\CouldNotSendNotification;
+use NotificationChannels\Fcm\FcmChannel;
+use NotificationChannels\Fcm\FcmMessage;
+use NotificationChannels\Fcm\Resources\AndroidConfig;
+use NotificationChannels\Fcm\Resources\AndroidFcmOptions;
+use NotificationChannels\Fcm\Resources\AndroidNotification;
+use NotificationChannels\Fcm\Resources\ApnsConfig;
+use NotificationChannels\Fcm\Resources\ApnsFcmOptions;
+
+class {{ class }} extends Notification implements ShouldQueue
+{
+    use Queueable;
+
+    /**
+     * Create a new notification instance.
+     *
+     * @return void
+     */
+    public function __construct(
+        protected string $currentLocale
+    ) {
+        $this->locale = $currentLocale;
+    }
+
+    /**
+     * Get the notification's delivery channels.
+     *
+     * @param  mixed  $notifiable
+     * @return array
+     */
+    public function via($notifiable)
+    {
+        return [
+            'mail',
+            DatabaseChannel::class,
+            FcmChannel::class
+        ];
+    }
+
+    /**
+     * Get the array representation of the notification.
+     *
+     * @param  mixed  $notifiable
+     * @return array
+     */
+    public function toDatabase($notifiable): array
+    {
+        return $this->buildPayload($notifiable);
+    }
+
+    /**
+     * @param $notifiable
+     * @return FcmMessage
+     * @throws CouldNotSendNotification
+     */
+    public function toFcm($notifiable): FcmMessage
+    {
+        $user = $notifiable->loadCount('unreadNotifications AS count');
+
+        $badge = $user->count;
+
+        return FcmMessage::create()
+            ->setData($this->buildPayload($notifiable))
+            ->setNotification(\NotificationChannels\Fcm\Resources\Notification::create()
+                ->setTitle($this->buildFcmTitle($notifiable))
+                ->setBody($this->buildFcmBody($notifiable)))
+            ->setAndroid(
+                AndroidConfig::create()
+                    ->setFcmOptions(AndroidFcmOptions::create()->setAnalyticsLabel('analytics'))
+                    ->setNotification(AndroidNotification::create()->setNotificationCount($badge))
+            )->setApns(
+                ApnsConfig::create()->setFcmOptions(
+                    ApnsFcmOptions::create()->setAnalyticsLabel('analytics_ios')
+                )->setPayload(['aps' => ['badge' => $badge]]));
+    }
+
+    /**
+     * Get the mail representation of the notification.
+     *
+     * @param  mixed  $notifiable
+     * @return \Illuminate\Notifications\Messages\MailMessage
+     */
+    public function toMail($notifiable)
+    {
+        return (new MailMessage)
+                    ->line('The introduction to the notification.')
+                    ->action('Notification Action', url('/'))
+                    ->line('Thank you for using our application!');
+    }
+
+    /**
+     * Get the array representation of the notification.
+     *
+     * @param  mixed  $notifiable
+     * @return array
+     */
+    public function toArray($notifiable)
+    {
+        return [
+            //
+        ];
+    }
+
+    /**
+     * @param $notifiable
+     * @return array<string, string>
+     */
+    protected function buildPayload($notifiable): array
+    {
+        return [
+            'notification_type' => 'type',
+            'title_ar' => __('notifications.type.send.title', [], 'ar'),
+            'title_en' => __('notifications.type.send.title', [], 'en'),
+            'body_ar' => __('notifications.type.send.body', [
+                //'attribute' => $this->attribute,
+            ], 'ar'),
+            'body_en' => __('notifications.type.send.body', [
+                //'attribute' => $this->attribute,
+            ], 'en'),
+            'link' => 'null',
+            'job_id' => 'null',
+            'invitation_id' => 'null',
+        ];
+    }
+
+    /**
+     * @param $notifiable
+     * @return string
+     */
+    protected function buildFcmTitle($notifiable): string
+    {
+        return __('notifications.type.send.title', [], $notifiable->locale);
+    }
+
+    /**
+     * @param $notifiable
+     * @return string
+     */
+    protected function buildFcmBody($notifiable): string
+    {
+        return __('notifications.type.send.body', [
+            //'attribute' => $this->attribute,
+        ], $notifiable->locale);
+    }
+}
